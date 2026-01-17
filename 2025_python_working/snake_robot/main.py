@@ -107,10 +107,31 @@ def run_simulation(num_links=None, simulation_time=None, accuracy=None, initial_
     if verbose:
         print("\n[4/4] Running dynamic simulation...")
     
+    import time as time_module
+    start_wall_time = time_module.time()
+    
     T, q = model.simulate(verbose=verbose)
+    
+    end_wall_time = time_module.time()
+    wall_clock_time = end_wall_time - start_wall_time
     
     # Extract states
     states = model.extract_states(q)
+    
+    # Calculate performance metrics
+    simulation_time = T[-1] - T[0]
+    real_time_factor = simulation_time / wall_clock_time if wall_clock_time > 0 else float('inf')
+    time_per_step = wall_clock_time / len(T) * 1000  # in milliseconds
+    
+    performance = {
+        'simulation_time': simulation_time,
+        'wall_clock_time': wall_clock_time,
+        'real_time_factor': real_time_factor,
+        'time_steps': len(T),
+        'time_per_step_ms': time_per_step,
+        'num_links': phy_props['N'],
+        'function_evaluations': getattr(model, '_last_nfev', 'N/A')
+    }
     
     if verbose:
         print("\n" + "=" * 60)
@@ -121,6 +142,19 @@ def run_simulation(num_links=None, simulation_time=None, accuracy=None, initial_
         print(f"  Final CM position: ({states['px'][-1]:.3f}, {states['py'][-1]:.3f}) m")
         print(f"  Total X displacement: {states['px'][-1] - states['px'][0]:.3f} m")
         print(f"  Total Y displacement: {states['py'][-1] - states['py'][0]:.3f} m")
+        
+        print("\n" + "-" * 60)
+        print("PERFORMANCE METRICS")
+        print("-" * 60)
+        print(f"  Simulation time (requested): {simulation_time:.2f} seconds")
+        print(f"  Wall-clock time (actual):    {wall_clock_time:.4f} seconds")
+        print(f"  Real-time factor (RTF):      {real_time_factor:.1f}x")
+        print(f"  Time per step:               {time_per_step:.3f} ms")
+        print("-" * 60)
+        if real_time_factor > 1:
+            print(f"  ✓ Simulation ran {real_time_factor:.0f}x FASTER than real-time!")
+        else:
+            print(f"  ✗ Simulation ran {1/real_time_factor:.1f}x SLOWER than real-time")
     
     return {
         'time': T,
@@ -128,7 +162,8 @@ def run_simulation(num_links=None, simulation_time=None, accuracy=None, initial_
         'ref_angles': ref_array,
         'T_ref': T_ref,
         'model': model,
-        'phy_props': phy_props
+        'phy_props': phy_props,
+        'performance': performance
     }
 
 
@@ -191,6 +226,14 @@ def create_plots(results, show=True, save=True):
         T, states, ref_array, T_ref,
         save=save, show=show
     )
+    
+    # 7. Performance metrics (if available)
+    if 'performance' in results:
+        print("  - Performance metrics...")
+        plotting.plot_performance_metrics(
+            results['performance'],
+            save=save, show=show
+        )
     
     print("\nAll plots generated!")
 

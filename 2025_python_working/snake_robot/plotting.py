@@ -142,6 +142,12 @@ def plot_cm_trajectory(px, py, time=None, save=True, show=True):
     """
     setup_plot_style()
     
+    # Import steering config to mark steering events
+    try:
+        from .config import STEERING_CONFIG
+    except ImportError:
+        from config import STEERING_CONFIG
+    
     fig, ax = plt.subplots(figsize=(10, 8))
     
     # Plot trajectory with color gradient to show time progression
@@ -171,27 +177,73 @@ def plot_cm_trajectory(px, py, time=None, save=True, show=True):
     # Mark start and end points
     ax.plot(px[0], py[0], 'go', markersize=14, label='Start', zorder=5, 
             markeredgecolor='darkgreen', markeredgewidth=2)
-    ax.plot(px[-1], py[-1], 'rs', markersize=14, label='End', zorder=5,
-            markeredgecolor='darkred', markeredgewidth=2)
+    ax.plot(px[-1], py[-1], 'bs', markersize=14, label='End', zorder=5,
+            markeredgecolor='darkblue', markeredgewidth=2)
     
-    # Add time markers (small dots at specific times)
+    # Mark steering events with red triangles
+    if time is not None:
+        steering_marked = False
+        for turn_name, turn_config in STEERING_CONFIG.items():
+            t_start = turn_config["t_start"]
+            t_end = turn_config["t_end"]
+            offset_deg = np.rad2deg(turn_config["offset"])
+            
+            # Check if steering occurs within simulation time
+            if t_start <= time[-1]:
+                # Mark start of steering
+                idx_start = np.argmin(np.abs(time - t_start))
+                if idx_start < len(px):
+                    label = 'Steering' if not steering_marked else None
+                    ax.plot(px[idx_start], py[idx_start], 'r^', markersize=12, 
+                           label=label, zorder=6, markeredgecolor='darkred', markeredgewidth=1.5)
+                    
+                    # Add annotation with time and offset
+                    direction = "Right" if offset_deg > 0 else "Left"
+                    ax.annotate(f't={t_start:.0f}s\n{direction} ({offset_deg:+.0f}°)', 
+                               (px[idx_start], py[idx_start]),
+                               textcoords="offset points", xytext=(10, 10),
+                               fontsize=9, fontweight='bold', color='red',
+                               bbox=dict(boxstyle='round,pad=0.3', facecolor='white', 
+                                        edgecolor='red', alpha=0.8))
+                    steering_marked = True
+                
+                # Mark end of steering (if within time range)
+                if t_end <= time[-1]:
+                    idx_end = np.argmin(np.abs(time - t_end))
+                    if idx_end < len(px):
+                        ax.plot(px[idx_end], py[idx_end], 'rv', markersize=10, 
+                               zorder=6, markeredgecolor='darkred', markeredgewidth=1.5)
+                        ax.annotate(f't={t_end:.0f}s\n(end)', 
+                                   (px[idx_end], py[idx_end]),
+                                   textcoords="offset points", xytext=(10, -15),
+                                   fontsize=8, color='darkred', alpha=0.8)
+    
+    # Add time markers (small dots at regular intervals, but not where steering is marked)
     if time is not None and len(time) > 10:
-        # Show markers at regular time intervals
         t_max = time[-1]
-        marker_interval = max(1, int(t_max / 5))  # ~5 markers
+        marker_interval = max(1, int(t_max / 5))
         time_markers = np.arange(marker_interval, t_max, marker_interval)
+        
+        # Get steering times to avoid overlap
+        steering_times = []
+        for turn_config in STEERING_CONFIG.values():
+            steering_times.extend([turn_config["t_start"], turn_config["t_end"]])
+        
         for t_mark in time_markers:
+            # Skip if too close to a steering marker
+            if any(abs(t_mark - st) < 2 for st in steering_times):
+                continue
             idx = np.argmin(np.abs(time - t_mark))
             if idx < len(px) and idx > 0:
-                ax.plot(px[idx], py[idx], 'ko', markersize=6, zorder=4)
+                ax.plot(px[idx], py[idx], 'ko', markersize=5, zorder=4, alpha=0.6)
                 ax.annotate(f'{t_mark:.0f}s', (px[idx], py[idx]), 
                            textcoords="offset points", xytext=(5, 5),
-                           fontsize=9, alpha=0.8)
+                           fontsize=8, alpha=0.7)
     
     ax.set_xlabel('X Position (m)', fontsize=14)
     ax.set_ylabel('Y Position (m)', fontsize=14)
     ax.set_title('Snake Robot Center of Mass Trajectory', fontsize=16)
-    ax.legend(loc='best', fontsize=12)
+    ax.legend(loc='best', fontsize=11)
     ax.grid(True, linestyle='--', linewidth=0.5, alpha=0.5)
     ax.set_aspect('equal', adjustable='box')
     
@@ -429,6 +481,130 @@ def create_summary_plot(time, states, ref_angles, T_ref, save=True, show=True):
     
     if save:
         plt.savefig('Simulation_Summary.png', 
+                   dpi=PLOT_SETTINGS['figure_dpi'], bbox_inches='tight')
+    if show:
+        plt.show()
+    
+    return fig
+
+
+def plot_performance_metrics(performance, save=True, show=True):
+    """
+    Create a visualization of simulation performance metrics.
+    
+    Args:
+        performance: Dictionary with performance metrics from run_simulation()
+        save: Whether to save figure
+        show: Whether to display figure
+    """
+    setup_plot_style()
+    
+    fig, axes = plt.subplots(1, 3, figsize=(14, 5))
+    
+    sim_time = performance['simulation_time']
+    wall_time = performance['wall_clock_time']
+    rtf = performance['real_time_factor']
+    num_links = performance.get('num_links', 'N/A')
+    time_steps = performance['time_steps']
+    
+    # 1. Bar chart: Simulation Time vs Wall-Clock Time
+    ax1 = axes[0]
+    bars = ax1.bar(['Simulation\nTime', 'Wall-Clock\nTime'], 
+                   [sim_time, wall_time], 
+                   color=['#2196F3', '#4CAF50'], 
+                   edgecolor='black', linewidth=1.5)
+    ax1.set_ylabel('Time (seconds)', fontsize=12)
+    ax1.set_title('Time Comparison', fontsize=14, fontweight='bold')
+    
+    # Add value labels on bars
+    for bar, val in zip(bars, [sim_time, wall_time]):
+        height = bar.get_height()
+        ax1.annotate(f'{val:.4f}s',
+                    xy=(bar.get_x() + bar.get_width() / 2, height),
+                    xytext=(0, 3),
+                    textcoords="offset points",
+                    ha='center', va='bottom', fontsize=11, fontweight='bold')
+    
+    # Set y-axis to start from 0
+    ax1.set_ylim(0, max(sim_time, wall_time) * 1.2)
+    ax1.grid(True, axis='y', alpha=0.3)
+    
+    # 2. Gauge-style RTF visualization
+    ax2 = axes[1]
+    ax2.set_xlim(0, 10)
+    ax2.set_ylim(0, 10)
+    ax2.set_aspect('equal')
+    ax2.axis('off')
+    
+    # Draw RTF as a large number with context
+    ax2.text(5, 7, f'{rtf:.0f}x', fontsize=48, fontweight='bold', 
+             ha='center', va='center', color='#2196F3')
+    ax2.text(5, 4.5, 'Real-Time Factor', fontsize=14, ha='center', va='center')
+    
+    # Add interpretation
+    if rtf > 100:
+        status_text = "⚡ Extremely Fast"
+        status_color = '#4CAF50'
+    elif rtf > 10:
+        status_text = "✓ Very Fast"
+        status_color = '#8BC34A'
+    elif rtf > 1:
+        status_text = "✓ Faster than Real-Time"
+        status_color = '#CDDC39'
+    else:
+        status_text = "✗ Slower than Real-Time"
+        status_color = '#FF5722'
+    
+    ax2.text(5, 2.5, status_text, fontsize=14, ha='center', va='center', 
+             color=status_color, fontweight='bold')
+    
+    # Add explanation
+    ax2.text(5, 1, f'{sim_time:.1f}s simulated in {wall_time:.4f}s', 
+             fontsize=10, ha='center', va='center', style='italic', alpha=0.7)
+    
+    ax2.set_title('Performance Rating', fontsize=14, fontweight='bold', pad=20)
+    
+    # 3. Info panel
+    ax3 = axes[2]
+    ax3.axis('off')
+    
+    info_text = f"""
+    SIMULATION METRICS
+    ══════════════════════════
+    
+    Number of Links:        {num_links}
+    Time Steps:             {time_steps}
+    Time per Step:          {performance['time_per_step_ms']:.3f} ms
+    
+    ══════════════════════════
+    
+    WHAT THE NUMBERS MEAN
+    ══════════════════════════
+    
+    • Simulation Time: The duration of 
+      snake motion being simulated
+      
+    • Wall-Clock Time: Actual computing
+      time on your machine
+      
+    • Real-Time Factor (RTF):
+      RTF = Sim Time / Wall Time
+      
+      RTF > 1  →  Faster than reality
+      RTF = 1  →  Real-time
+      RTF < 1  →  Slower than reality
+    """
+    
+    ax3.text(0.05, 0.95, info_text, transform=ax3.transAxes, fontsize=10,
+             verticalalignment='top', fontfamily='monospace',
+             bbox=dict(boxstyle='round', facecolor='#f5f5f5', alpha=0.8))
+    
+    ax3.set_title('Information', fontsize=14, fontweight='bold')
+    
+    plt.tight_layout()
+    
+    if save:
+        plt.savefig('Performance_Metrics.png', 
                    dpi=PLOT_SETTINGS['figure_dpi'], bbox_inches='tight')
     if show:
         plt.show()
