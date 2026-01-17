@@ -246,6 +246,60 @@ def create_plots(results, show=True, save=True):
     print("\nAll plots generated!")
 
 
+def create_animation(results, save=True, show=True, speed_factor=1.0):
+    """
+    Create animation of the snake robot movement.
+    
+    Args:
+        results: Dictionary from run_simulation()
+        save: Whether to save animation as GIF
+        show: Whether to display animation
+        speed_factor: Playback speed multiplier
+    """
+    T = results['time']
+    states = results['states']
+    phy_props = results['phy_props']
+    
+    print("\nGenerating animation...")
+    print("  This may take a moment for long simulations...")
+    
+    # Create the animation
+    anim = plotting.animate_snake_robot(
+        T, states, phy_props,
+        save=save, show=show,
+        speed_factor=speed_factor
+    )
+    
+    return anim
+
+
+def create_motion_sequence(results, n_frames=6, save=True, show=True):
+    """
+    Create a multi-panel figure showing snake at different time points.
+    
+    Useful for publications when animation is not possible.
+    
+    Args:
+        results: Dictionary from run_simulation()
+        n_frames: Number of frames to show
+        save: Whether to save figure
+        show: Whether to display figure
+    """
+    T = results['time']
+    states = results['states']
+    phy_props = results['phy_props']
+    
+    print(f"\nGenerating motion sequence with {n_frames} frames...")
+    
+    fig, axes = plotting.create_snake_frames(
+        T, states, phy_props,
+        n_frames=n_frames,
+        save=save, show=show
+    )
+    
+    return fig, axes
+
+
 def main(interactive=True):
     """
     Main function to run the complete simulation and visualization.
@@ -275,14 +329,24 @@ def main(interactive=True):
     # Create plots
     create_plots(results, show=True, save=True)
     
+    # Create motion sequence (static frames)
+    create_motion_sequence(results, n_frames=6, save=True, show=True)
+    
+    # Create animation (GIF)
+    create_animation(results, save=True, show=False)
+    
     print("\n" + "=" * 60)
     print("Output files saved:")
     print("  - Reference_vs_Actual_Joints.png")
     print("  - Snake_CM_Trajectory.png")
     print("  - Position_vs_Time.png")
     print("  - Head_Angle.png")
+    print("  - Average_Joint_Angle.png")
     print("  - Tracking_Error.png")
     print("  - Simulation_Summary.png")
+    print("  - Performance_Metrics.png")
+    print("  - Snake_Motion_Sequence.png")
+    print("  - snake_robot_animation.gif")
     print("=" * 60)
     
     return results

@@ -705,6 +705,392 @@ def plot_performance_metrics(performance, save=True, show=True):
     return fig
 
 
+def compute_link_positions(phi, theta_n, px, py, l, N):
+    """
+    Compute the positions of all link centers and endpoints from state variables.
+    
+    The snake robot kinematics:
+    - theta = H * phi_bar, where phi_bar = [phi_1, ..., phi_{N-1}, theta_N]
+    - Each link i has center at (x_i, y_i) and orientation theta_i
+    
+    Args:
+        phi: Joint angles array (N-1,) in radians
+        theta_n: Head angle (scalar) in radians
+        px: CM x position (scalar)
+        py: CM y position (scalar)
+        l: Link length (full length = 2*l where l is half-length)
+        N: Number of links
+        
+    Returns:
+        link_x: Array of link center x positions (N,)
+        link_y: Array of link center y positions (N,)
+        theta: Array of link angles (N,)
+    """
+    # Build phi_bar = [phi_1, ..., phi_{N-1}, theta_N]
+    phi_bar = np.append(phi, theta_n)
+    
+    # Build H matrix for theta = H * phi_bar
+    H = -1 * np.triu(np.ones((N, N)))
+    H[:, -1] = -1 * H[:, -1]
+    
+    # Compute absolute link angles
+    theta = H @ phi_bar
+    
+    # Compute link center positions from CM position
+    # Using the kinematic relationships
+    # The CM is the average of all link centers
+    
+    # K matrix for position calculation (from textbook)
+    K = np.zeros((N, N))
+    for i in range(N):
+        for j in range(N):
+            if j < i:
+                K[i, j] = 1
+            elif j == i:
+                K[i, j] = 0.5
+            else:
+                K[i, j] = 0
+    
+    # Deviation from mean
+    K_bar = K - np.mean(K, axis=0)
+    
+    # Link center positions
+    link_x = px + l * K_bar @ np.cos(theta)
+    link_y = py + l * K_bar @ np.sin(theta)
+    
+    return link_x, link_y, theta
+
+
+def animate_snake_robot(time, states, phy_props, save=True, show=True, 
+                        speed_factor=1.0, interval=50, trail_length=50):
+    """
+    Create an animation of the snake robot movement.
+    
+    Args:
+        time: Time array from simulation
+        states: States dictionary from extract_states()
+        phy_props: Physical properties dictionary
+        save: Whether to save animation as GIF/MP4
+        show: Whether to display animation
+        speed_factor: Speed up/slow down factor (1.0 = real-time playback)
+        interval: Milliseconds between frames (lower = faster)
+        trail_length: Number of past CM positions to show as trail
+        
+    Returns:
+        anim: Animation object
+    """
+    from matplotlib.animation import FuncAnimation
+    from matplotlib.patches import FancyBboxPatch, Circle
+    import matplotlib.patches as mpatches
+    
+    setup_plot_style()
+    
+    # Extract parameters
+    N = phy_props['N']
+    l = phy_props['l']  # This is half-link length
+    
+    # Extract state arrays
+    phi = states['phi']          # (N-1, time_steps)
+    theta_n = states['theta_n']  # (time_steps,)
+    px = states['px']            # (time_steps,)
+    py = states['py']            # (time_steps,)
+    
+    # Subsample for smoother animation (every nth frame)
+    n_frames = len(time)
+    skip = max(1, n_frames // 500)  # Limit to ~500 frames
+    frame_indices = np.arange(0, n_frames, skip)
+    
+    # Compute all link positions for all time steps
+    print(f"Computing link positions for {len(frame_indices)} frames...")
+    all_link_x = []
+    all_link_y = []
+    all_theta = []
+    
+    for idx in frame_indices:
+        link_x, link_y, theta = compute_link_positions(
+            phi[:, idx], theta_n[idx], px[idx], py[idx], l, N
+        )
+        all_link_x.append(link_x)
+        all_link_y.append(link_y)
+        all_theta.append(theta)
+    
+    all_link_x = np.array(all_link_x)
+    all_link_y = np.array(all_link_y)
+    all_theta = np.array(all_theta)
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=(12, 8))
+    
+    # Calculate bounds with padding
+    x_min = np.min(all_link_x) - 0.3
+    x_max = np.max(all_link_x) + 0.3
+    y_min = np.min(all_link_y) - 0.3
+    y_max = np.max(all_link_y) + 0.3
+    
+    # Ensure equal aspect ratio
+    x_range = x_max - x_min
+    y_range = y_max - y_min
+    if x_range > y_range:
+        y_center = (y_max + y_min) / 2
+        y_min = y_center - x_range / 2
+        y_max = y_center + x_range / 2
+    else:
+        x_center = (x_max + x_min) / 2
+        x_min = x_center - y_range / 2
+        x_max = x_center + y_range / 2
+    
+    ax.set_xlim(x_min, x_max)
+    ax.set_ylim(y_min, y_max)
+    ax.set_aspect('equal')
+    ax.grid(True, linestyle='--', alpha=0.5)
+    ax.set_xlabel('X Position (m)', fontsize=12)
+    ax.set_ylabel('Y Position (m)', fontsize=12)
+    
+    # Color map for links (gradient from tail to head)
+    colors = plt.cm.viridis(np.linspace(0.2, 0.9, N))
+    
+    # Initialize plot elements
+    # Links as thick lines
+    link_lines = []
+    for i in range(N):
+        line, = ax.plot([], [], 'o-', linewidth=8, markersize=4,
+                       color=colors[i], solid_capstyle='round')
+        link_lines.append(line)
+    
+    # Head marker (circle)
+    head_marker, = ax.plot([], [], 'ro', markersize=15, zorder=10,
+                          markeredgecolor='darkred', markeredgewidth=2)
+    
+    # Tail marker (circle)
+    tail_marker, = ax.plot([], [], 'go', markersize=12, zorder=10,
+                          markeredgecolor='darkgreen', markeredgewidth=2)
+    
+    # CM trail
+    trail_line, = ax.plot([], [], 'b-', linewidth=1.5, alpha=0.5, label='CM Trail')
+    
+    # CM current position
+    cm_marker, = ax.plot([], [], 'b*', markersize=12, zorder=9, label='CM')
+    
+    # Time text
+    time_text = ax.text(0.02, 0.98, '', transform=ax.transAxes, fontsize=12,
+                       verticalalignment='top', fontweight='bold',
+                       bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    
+    # Info text
+    info_text = ax.text(0.02, 0.88, '', transform=ax.transAxes, fontsize=10,
+                       verticalalignment='top',
+                       bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.8))
+    
+    # Legend
+    ax.legend(loc='upper right', fontsize=10)
+    
+    # Title
+    title = ax.set_title(f'Snake Robot Animation ({N} Links)', fontsize=14, fontweight='bold')
+    
+    def init():
+        """Initialize animation."""
+        for line in link_lines:
+            line.set_data([], [])
+        head_marker.set_data([], [])
+        tail_marker.set_data([], [])
+        trail_line.set_data([], [])
+        cm_marker.set_data([], [])
+        time_text.set_text('')
+        info_text.set_text('')
+        return link_lines + [head_marker, tail_marker, trail_line, cm_marker, time_text, info_text]
+    
+    def update(frame):
+        """Update animation frame."""
+        idx = frame
+        t = time[frame_indices[idx]]
+        
+        # Get link positions for this frame
+        link_x = all_link_x[idx]
+        link_y = all_link_y[idx]
+        theta = all_theta[idx]
+        
+        # Update each link as a line from one end to the other
+        for i in range(N):
+            # Link endpoints
+            x_start = link_x[i] - l * np.cos(theta[i])
+            x_end = link_x[i] + l * np.cos(theta[i])
+            y_start = link_y[i] - l * np.sin(theta[i])
+            y_end = link_y[i] + l * np.sin(theta[i])
+            link_lines[i].set_data([x_start, x_end], [y_start, y_end])
+        
+        # Head position (front of last link)
+        head_x = link_x[-1] + l * np.cos(theta[-1])
+        head_y = link_y[-1] + l * np.sin(theta[-1])
+        head_marker.set_data([head_x], [head_y])
+        
+        # Tail position (back of first link)
+        tail_x = link_x[0] - l * np.cos(theta[0])
+        tail_y = link_y[0] - l * np.sin(theta[0])
+        tail_marker.set_data([tail_x], [tail_y])
+        
+        # CM trail
+        trail_start = max(0, idx - trail_length)
+        trail_x = px[frame_indices[trail_start:idx+1]]
+        trail_y = py[frame_indices[trail_start:idx+1]]
+        trail_line.set_data(trail_x, trail_y)
+        
+        # CM marker
+        cm_marker.set_data([px[frame_indices[idx]]], [py[frame_indices[idx]]])
+        
+        # Update time text
+        time_text.set_text(f'Time: {t:.2f} s')
+        
+        # Update info text
+        cm_x = px[frame_indices[idx]]
+        cm_y = py[frame_indices[idx]]
+        head_angle = np.rad2deg(theta_n[frame_indices[idx]])
+        info_text.set_text(f'CM: ({cm_x:.3f}, {cm_y:.3f}) m\nHead angle: {head_angle:.1f}°')
+        
+        return link_lines + [head_marker, tail_marker, trail_line, cm_marker, time_text, info_text]
+    
+    # Create animation
+    print(f"Creating animation with {len(frame_indices)} frames...")
+    anim = FuncAnimation(fig, update, frames=len(frame_indices),
+                        init_func=init, blit=True, interval=interval)
+    
+    # Save animation
+    if save:
+        try:
+            # Try to save as GIF (requires pillow)
+            print("Saving animation as GIF...")
+            anim.save('snake_robot_animation.gif', writer='pillow', fps=20, dpi=100)
+            print("Animation saved as 'snake_robot_animation.gif'")
+        except Exception as e:
+            print(f"Could not save GIF: {e}")
+            try:
+                # Try to save as MP4 (requires ffmpeg)
+                print("Trying to save as MP4...")
+                anim.save('snake_robot_animation.mp4', writer='ffmpeg', fps=20, dpi=100)
+                print("Animation saved as 'snake_robot_animation.mp4'")
+            except Exception as e2:
+                print(f"Could not save MP4: {e2}")
+                print("To save animations, install: pip install pillow")
+    
+    if show:
+        plt.show()
+    
+    return anim
+
+
+def create_snake_frames(time, states, phy_props, n_frames=6, save=True, show=True):
+    """
+    Create a multi-panel figure showing snake robot at different time points.
+    
+    This is useful for publications or when animation is not possible.
+    
+    Args:
+        time: Time array from simulation
+        states: States dictionary from extract_states()
+        phy_props: Physical properties dictionary
+        n_frames: Number of frames to show
+        save: Whether to save figure
+        show: Whether to display figure
+        
+    Returns:
+        fig, axes: Figure and axes objects
+    """
+    setup_plot_style()
+    
+    # Extract parameters
+    N = phy_props['N']
+    l = phy_props['l']
+    
+    # Extract state arrays
+    phi = states['phi']
+    theta_n = states['theta_n']
+    px = states['px']
+    py = states['py']
+    
+    # Select time indices to show
+    n_steps = len(time)
+    indices = np.linspace(0, n_steps - 1, n_frames).astype(int)
+    
+    # Create subplots
+    n_cols = min(3, n_frames)
+    n_rows = (n_frames + n_cols - 1) // n_cols
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5*n_cols, 4*n_rows))
+    if n_frames == 1:
+        axes = np.array([axes])
+    axes = axes.flatten()
+    
+    # Color map for links
+    colors = plt.cm.viridis(np.linspace(0.2, 0.9, N))
+    
+    # Compute global bounds
+    all_x, all_y = [], []
+    for idx in indices:
+        link_x, link_y, theta = compute_link_positions(
+            phi[:, idx], theta_n[idx], px[idx], py[idx], l, N
+        )
+        all_x.extend(link_x)
+        all_y.extend(link_y)
+    
+    x_margin = (max(all_x) - min(all_x)) * 0.2 + 0.1
+    y_margin = (max(all_y) - min(all_y)) * 0.2 + 0.1
+    x_lim = (min(all_x) - x_margin, max(all_x) + x_margin)
+    y_lim = (min(all_y) - y_margin, max(all_y) + y_margin)
+    
+    for i, idx in enumerate(indices):
+        ax = axes[i]
+        t = time[idx]
+        
+        # Compute link positions
+        link_x, link_y, theta = compute_link_positions(
+            phi[:, idx], theta_n[idx], px[idx], py[idx], l, N
+        )
+        
+        # Plot CM trail up to this point
+        ax.plot(px[:idx+1], py[:idx+1], 'b-', linewidth=1, alpha=0.3)
+        
+        # Plot each link
+        for j in range(N):
+            x_start = link_x[j] - l * np.cos(theta[j])
+            x_end = link_x[j] + l * np.cos(theta[j])
+            y_start = link_y[j] - l * np.sin(theta[j])
+            y_end = link_y[j] + l * np.sin(theta[j])
+            ax.plot([x_start, x_end], [y_start, y_end], 'o-', 
+                   linewidth=6, markersize=3, color=colors[j], solid_capstyle='round')
+        
+        # Mark head and tail
+        head_x = link_x[-1] + l * np.cos(theta[-1])
+        head_y = link_y[-1] + l * np.sin(theta[-1])
+        tail_x = link_x[0] - l * np.cos(theta[0])
+        tail_y = link_y[0] - l * np.sin(theta[0])
+        
+        ax.plot(head_x, head_y, 'ro', markersize=10, markeredgecolor='darkred', markeredgewidth=1.5)
+        ax.plot(tail_x, tail_y, 'go', markersize=8, markeredgecolor='darkgreen', markeredgewidth=1.5)
+        ax.plot(px[idx], py[idx], 'b*', markersize=10)  # CM
+        
+        ax.set_xlim(x_lim)
+        ax.set_ylim(y_lim)
+        ax.set_aspect('equal')
+        ax.grid(True, linestyle='--', alpha=0.5)
+        ax.set_title(f't = {t:.2f} s', fontsize=12, fontweight='bold')
+        ax.set_xlabel('X (m)', fontsize=10)
+        ax.set_ylabel('Y (m)', fontsize=10)
+    
+    # Hide unused axes
+    for i in range(n_frames, len(axes)):
+        axes[i].set_visible(False)
+    
+    fig.suptitle(f'Snake Robot Motion Sequence ({N} Links)', fontsize=14, fontweight='bold')
+    plt.tight_layout()
+    
+    if save:
+        plt.savefig('Snake_Motion_Sequence.png', dpi=PLOT_SETTINGS['figure_dpi'], bbox_inches='tight')
+        print("Saved 'Snake_Motion_Sequence.png'")
+    
+    if show:
+        plt.show()
+    
+    return fig, axes
+
+
 if __name__ == "__main__":
     # Test plotting functions with dummy data
     print("Testing plotting module...")
