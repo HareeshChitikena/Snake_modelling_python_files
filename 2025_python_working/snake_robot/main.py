@@ -213,21 +213,29 @@ def create_plots(results, show=True, save=True):
         save=save, show=show
     )
     
-    # 5. Tracking error
+    # 5. Average joint angle (phi_bar)
+    print("  - Average joint angle (phi_bar)...")
+    plotting.plot_average_joint_angle(
+        T, states['phi'], 
+        ref_angles=ref_array, T_ref=T_ref,
+        save=save, show=show
+    )
+    
+    # 6. Tracking error
     print("  - Tracking error...")
     plotting.plot_tracking_error(
         T, ref_array, states['phi'],
         save=save, show=show
     )
     
-    # 6. Summary plot
+    # 7. Summary plot
     print("  - Summary plot...")
     plotting.create_summary_plot(
         T, states, ref_array, T_ref,
         save=save, show=show
     )
     
-    # 7. Performance metrics (if available)
+    # 8. Performance metrics (if available)
     if 'performance' in results:
         print("  - Performance metrics...")
         plotting.plot_performance_metrics(

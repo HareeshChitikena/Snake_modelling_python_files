@@ -376,6 +376,99 @@ def plot_head_angle(time, theta_n, save=True, show=True):
     return fig, ax
 
 
+def plot_average_joint_angle(time, joint_angles, ref_angles=None, T_ref=None, 
+                             save=True, show=True):
+    """
+    Plot the average joint angle (φ̄ or phi_bar) over time.
+    
+    The average joint angle is computed as the mean of all joint angles at each
+    time step: φ̄(t) = (1/n) * Σ φ_i(t)
+    
+    This is an important metric for snake robot locomotion as it indicates
+    the overall body curvature/orientation tendency.
+    
+    Args:
+        time: Time array
+        joint_angles: Joint angles array (n_joints x time_steps) in RADIANS
+        ref_angles: Optional reference angles array for comparison
+        T_ref: Optional reference time array
+        save: Whether to save figure
+        show: Whether to display figure
+        
+    Returns:
+        fig, ax: Matplotlib figure and axis objects
+    """
+    setup_plot_style()
+    
+    # Import steering config to mark steering events
+    try:
+        from .config import STEERING_CONFIG
+    except ImportError:
+        from config import STEERING_CONFIG
+    
+    fig, ax = plt.subplots(figsize=(12, 5))
+    
+    # Compute average joint angle (mean across all joints at each time step)
+    # joint_angles has shape (n_joints, time_steps)
+    phi_avg = np.mean(joint_angles, axis=0)  # Average across joints
+    phi_avg_deg = np.rad2deg(phi_avg)  # Convert to degrees
+    
+    # Plot actual average joint angle
+    ax.plot(time, phi_avg_deg, 'b-', linewidth=2, label=r'Actual $\bar{\phi}$')
+    
+    # Plot reference average if provided
+    if ref_angles is not None and T_ref is not None:
+        ref_phi_avg = np.mean(ref_angles, axis=0)
+        ref_phi_avg_deg = np.rad2deg(ref_phi_avg)
+        ax.plot(T_ref, ref_phi_avg_deg, 'r--', linewidth=1.5, 
+               label=r'Reference $\bar{\phi}$', alpha=0.8)
+    
+    # Mark steering periods with shaded regions
+    y_min, y_max = ax.get_ylim()
+    for turn_name, turn_config in STEERING_CONFIG.items():
+        t_start = turn_config["t_start"]
+        t_end = turn_config["t_end"]
+        offset_deg = np.rad2deg(turn_config["offset"])
+        
+        # Check if steering occurs within simulation time
+        if t_start <= time[-1]:
+            direction = "Right" if offset_deg > 0 else "Left"
+            color = 'lightgreen' if offset_deg > 0 else 'lightsalmon'
+            
+            # Shade the steering region
+            ax.axvspan(t_start, min(t_end, time[-1]), alpha=0.3, color=color,
+                      label=f'Steer {direction} ({offset_deg:+.0f}°)')
+            
+            # Add vertical line at start
+            ax.axvline(x=t_start, color='gray', linestyle=':', linewidth=1, alpha=0.7)
+    
+    # Configure axes
+    ax.xaxis.set_major_locator(ticker.MultipleLocator(max(1, time[-1]//10)))
+    ax.xaxis.set_minor_locator(ticker.MultipleLocator(max(0.5, time[-1]//20)))
+    ax.yaxis.set_major_locator(ticker.MultipleLocator(5))
+    ax.yaxis.set_minor_locator(ticker.MultipleLocator(1))
+    
+    ax.set_xlabel('Time (s)', fontsize=14)
+    ax.set_ylabel(r'Average Joint Angle $\bar{\phi}$ (degrees)', fontsize=14)
+    ax.set_title(r'Average Joint Angle ($\bar{\phi}$) vs Time', fontsize=16)
+    ax.set_xlim(time[0], time[-1])
+    ax.legend(loc='best', fontsize=10, framealpha=0.9)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.5)
+    
+    # Add zero reference line
+    ax.axhline(y=0, color='black', linestyle='-', linewidth=0.5, alpha=0.5)
+    
+    plt.tight_layout()
+    
+    if save:
+        plt.savefig('Average_Joint_Angle.png', 
+                   dpi=PLOT_SETTINGS['figure_dpi'], bbox_inches='tight')
+    if show:
+        plt.show()
+    
+    return fig, ax
+
+
 def plot_tracking_error(time, ref_angles, actual_angles, save=True, show=True):
     """
     Plot joint angle tracking error over time.
