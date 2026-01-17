@@ -498,8 +498,9 @@ class snake_dynamic_model:
         # Bundle all extra args into a tuple
         args = (self.qa_ddot, self.qu_ddot, self.N)
 
-        # Solve the system
-        sol = solve_ivp(snake_state_space_model, t_span, y0[0], args=args, t_eval=self.T_span, rtol=1e-3, atol=1e-3)
+        # Solve the system with tighter tolerances to prevent instability
+        sol = solve_ivp(snake_state_space_model, t_span, y0[0], args=args, t_eval=self.T_span, 
+                       method='LSODA', rtol=1e-6, atol=1e-8)
 
         ##### Solving ODE with lsoda
         #def snake_state_space_model(t, y, qa_ddot, qu_ddot):
@@ -688,6 +689,50 @@ class plotting:
         plt.savefig('Reference_vs_Actual_All_Joints.png', dpi=400)
         plt.show()
 
+    @staticmethod
+    def plot_cm_trajectory(px, py):
+        """
+        Plot the x-y trajectory of the snake's center of mass
+        
+        Parameters:
+        px: array of x positions over time
+        py: array of y positions over time
+        """
+        import matplotlib.pyplot as plt
+        import matplotlib as mpl
+        
+        fig, ax = plt.subplots(figsize=(8, 6))
+        
+        # Plot trajectory
+        ax.plot(px, py, linewidth=2, color='blue', label='Snake CM Trajectory')
+        
+        # Mark start and end points
+        ax.plot(px[0], py[0], 'go', markersize=10, label='Start')
+        ax.plot(px[-1], py[-1], 'ro', markersize=10, label='End')
+        
+        # Add arrow to show direction
+        # Sample a few points along the trajectory to show direction
+        n_arrows = 5
+        step = len(px) // (n_arrows + 1)
+        for i in range(1, n_arrows + 1):
+            idx = i * step
+            if idx < len(px) - 1:
+                dx = px[idx + step//2] - px[idx]
+                dy = py[idx + step//2] - py[idx]
+                ax.arrow(px[idx], py[idx], dx, dy, 
+                        head_width=0.05, head_length=0.05, fc='blue', ec='blue', alpha=0.6)
+        
+        ax.set_xlabel('X Position (m)', fontsize=14)
+        ax.set_ylabel('Y Position (m)', fontsize=14)
+        ax.set_title('Snake Robot Center of Mass Trajectory', fontsize=16)
+        ax.legend(loc='best', fontsize=12)
+        ax.grid(True, linestyle='--', linewidth=0.5, alpha=0.7)
+        ax.axis('equal')  # Equal aspect ratio
+        
+        plt.tight_layout()
+        plt.savefig('Snake_CM_Trajectory.png', dpi=400, bbox_inches='tight')
+        plt.show()
+
 
 snake = snake_initiate()
 phy_properties2, initial_values2, snake_parameters2, control_gains2 = snake.snake_para()
@@ -711,3 +756,7 @@ phir1 = phir['phi1']
 j_angle2 = np.array([phir[key] for key in sorted(phir.keys(), key=lambda y: int(y[3:]))])
 #plotting.snake_plotting(T_span,phir)
 plotting.snake_plot_q_and_ref2(j_angle2, T_span, xx1, T)
+# Plot snake center of mass trajectory
+px = x2[1, :]  # X position of center of mass over time
+py = x2[2, :]  # Y position of center of mass over time
+plotting.plot_cm_trajectory(px, py)
