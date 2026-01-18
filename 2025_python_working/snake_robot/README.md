@@ -35,20 +35,25 @@ snake_robot/
 ├── config.py            # Configuration parameters & user input
 ├── snake_init.py        # Robot initialization (geometry, state)
 ├── dynamic_model.py     # Core dynamics & ODE solver
-├── plotting.py          # All visualization functions (8 plot types)
+├── plotting.py          # All visualization functions (9 plot types)
 ├── main.py              # Main entry point with CLI
 ├── requirements.txt     # Python dependencies
-└── README.md            # This documentation
-
-Output files (generated):
-├── Reference_vs_Actual_Joints.png
-├── Snake_CM_Trajectory.png
-├── Position_vs_Time.png
-├── Head_Angle.png
-├── Average_Joint_Angle.png      # NEW: φ̄ plot
-├── Tracking_Error.png
-├── Simulation_Summary.png
-└── Performance_Metrics.png
+├── README.md            # This documentation
+│
+└── output/              # Generated outputs (auto-created)
+    ├── plots/           # Static plot images
+    │   ├── Reference_vs_Actual_Joints.png
+    │   ├── Snake_CM_Trajectory.png
+    │   ├── Position_vs_Time.png
+    │   ├── Head_Angle.png
+    │   ├── Average_Joint_Angle.png
+    │   ├── Tracking_Error.png
+    │   ├── Simulation_Summary.png
+    │   ├── Performance_Metrics.png
+    │   └── Snake_Motion_Sequence.png
+    │
+    └── animations/      # Animation files
+        └── snake_robot_animation.gif
 ```
 
 ---

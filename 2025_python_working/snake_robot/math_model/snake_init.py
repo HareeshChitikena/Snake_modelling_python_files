@@ -10,8 +10,11 @@ Handles the initialization of the snake robot state including:
 import numpy as np
 
 try:
-    from .config import PHYSICAL_PROPERTIES, INITIAL_CONDITIONS, CONTROL_GAINS, get_snake_parameters
+    from ..config import PHYSICAL_PROPERTIES, INITIAL_CONDITIONS, CONTROL_GAINS, get_snake_parameters
 except ImportError:
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent.parent))
     from config import PHYSICAL_PROPERTIES, INITIAL_CONDITIONS, CONTROL_GAINS, get_snake_parameters
 
 

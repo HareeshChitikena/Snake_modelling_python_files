@@ -20,8 +20,11 @@ from numpy.linalg import solve as np_solve  # Faster than inv @ for solving line
 from tqdm import tqdm
 
 try:
-    from .config import SIMULATION_SETTINGS, STEERING_CONFIG
+    from ..config import SIMULATION_SETTINGS, STEERING_CONFIG
 except ImportError:
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent.parent))
     from config import SIMULATION_SETTINGS, STEERING_CONFIG
 
 

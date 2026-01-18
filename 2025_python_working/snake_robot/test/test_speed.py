@@ -1,8 +1,11 @@
 """Quick speed test for the snake robot simulation."""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import time
 from config import update_config, SIMULATION_SETTINGS
-from snake_init import SnakeInitializer
-from dynamic_model import SnakeDynamicModel
+from math_model import SnakeInitializer, SnakeDynamicModel
 
 # Test configuration - small test first
 num_links = 5

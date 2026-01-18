@@ -16,7 +16,7 @@ Usage:
     - Number of links (default: 10)
     - Simulation time in seconds (default: 60)
 
-For other configurations, modify the snake_robot/config.py file.
+For other configurations, modify the config.py file.
 
 Author: Snake Robot Project
 Reference: Snake Robotics textbook
@@ -26,24 +26,13 @@ import sys
 import numpy as np
 from pathlib import Path
 
-# Add parent directory to path for imports
+# Add current directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
-try:
-    from snake_robot import (
-        SnakeInitializer,
-        SnakeDynamicModel,
-        plotting,
-        PHYSICAL_PROPERTIES,
-        SIMULATION_SETTINGS
-    )
-    from snake_robot.config import get_user_input, update_config
-except ImportError:
-    # When running from within the snake_robot directory
-    from snake_init import SnakeInitializer
-    from dynamic_model import SnakeDynamicModel
-    import plotting
-    from config import PHYSICAL_PROPERTIES, SIMULATION_SETTINGS, get_user_input, update_config
+# Import from reorganized package structure
+from math_model import SnakeInitializer, SnakeDynamicModel
+from plot import plotting
+from config import PHYSICAL_PROPERTIES, SIMULATION_SETTINGS, get_user_input, update_config
 
 
 def run_simulation(num_links=None, simulation_time=None, accuracy=None, initial_joint_angle=None, verbose=True):
@@ -243,6 +232,10 @@ def create_plots(results, show=True, save=True):
             save=save, show=show
         )
     
+    # Copy outputs from temp to final directory
+    if save:
+        plotting.copy_outputs_to_final()
+    
     print("\nAll plots generated!")
 
 
@@ -336,17 +329,20 @@ def main(interactive=True):
     create_animation(results, save=True, show=False)
     
     print("\n" + "=" * 60)
-    print("Output files saved:")
-    print("  - Reference_vs_Actual_Joints.png")
-    print("  - Snake_CM_Trajectory.png")
-    print("  - Position_vs_Time.png")
-    print("  - Head_Angle.png")
-    print("  - Average_Joint_Angle.png")
-    print("  - Tracking_Error.png")
-    print("  - Simulation_Summary.png")
-    print("  - Performance_Metrics.png")
-    print("  - Snake_Motion_Sequence.png")
-    print("  - snake_robot_animation.gif")
+    print("Output files saved to 'output/' folder:")
+    print("-" * 60)
+    print("  output/plots/")
+    print("    ├── Reference_vs_Actual_Joints.png")
+    print("    ├── Snake_CM_Trajectory.png")
+    print("    ├── Position_vs_Time.png")
+    print("    ├── Head_Angle.png")
+    print("    ├── Average_Joint_Angle.png")
+    print("    ├── Tracking_Error.png")
+    print("    ├── Simulation_Summary.png")
+    print("    ├── Performance_Metrics.png")
+    print("    └── Snake_Motion_Sequence.png")
+    print("  output/animations/")
+    print("    └── snake_robot_animation.gif")
     print("=" * 60)
     
     return results

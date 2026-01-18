@@ -7,16 +7,134 @@ Provides visualization functions for snake robot simulation results:
 - Animation utilities
 """
 
+import os
+import tempfile
+import shutil
+import subprocess
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import matplotlib.ticker as ticker
 from matplotlib import colormaps
+from pathlib import Path
 
 try:
-    from .config import PLOT_SETTINGS
+    from ..config import PLOT_SETTINGS
 except ImportError:
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent.parent))
     from config import PLOT_SETTINGS
+
+# Output directories - save to snake_robot/output (parent of plot folder)
+_SCRIPT_DIR = Path(__file__).parent.parent  # Go up to snake_robot
+OUTPUT_DIR = _SCRIPT_DIR / "output"
+# Save directly to output folder (OneDrive has issues with nested folders)
+PLOTS_DIR = OUTPUT_DIR
+ANIMATIONS_DIR = OUTPUT_DIR
+
+# Use a local temp directory outside OneDrive for actual file writing
+_TEMP_BASE = Path(tempfile.gettempdir()) / "snake_robot_output"
+_TEMP_PLOTS = _TEMP_BASE / "plots"
+_TEMP_ANIMATIONS = _TEMP_BASE / "animations"
+
+
+def _create_real_directory(dir_path):
+    """
+    Create a real local directory, forcing OneDrive to make it available offline.
+    Uses robocopy to create real directories that OneDrive won't convert to placeholders.
+    """
+    dir_str = str(dir_path)
+    try:
+        # First try normal creation
+        os.makedirs(dir_str, exist_ok=True)
+        
+        # On Windows, try to pin the folder to make it "always available"
+        if os.name == 'nt':
+            # Use attrib to remove OneDrive's sparse/offline attributes
+            try:
+                subprocess.run(['attrib', '-U', '-P', dir_str], 
+                             capture_output=True, timeout=5)
+            except:
+                pass
+        return True
+    except Exception as e:
+        return False
+
+
+def ensure_output_dirs():
+    """Create output directories if they don't exist."""
+    # Create temp directories (these are outside OneDrive, so no issues)
+    os.makedirs(str(_TEMP_PLOTS), exist_ok=True)
+    os.makedirs(str(_TEMP_ANIMATIONS), exist_ok=True)
+    
+    # Try to create final output directory (single level, not nested)
+    _create_real_directory(OUTPUT_DIR)
+
+
+def get_save_path(filename, dir_type='plots'):
+    """
+    Get the save path for a file, ensuring directory exists.
+    Returns temp path for initial save, then copies to final location.
+    
+    Args:
+        filename: Name of the file to save
+        dir_type: 'plots' or 'animations'
+    
+    Returns:
+        str: Full path to save the file
+    """
+    ensure_output_dirs()
+    
+    # Use temp directory for initial save
+    if dir_type == 'plots':
+        temp_path = _TEMP_PLOTS / filename
+    else:
+        temp_path = _TEMP_ANIMATIONS / filename
+    
+    return str(temp_path)
+
+
+def copy_outputs_to_final():
+    """
+    Copy all output files from temp directory to final output directory.
+    Call this after all plots are generated.
+    """
+    success = True
+    copied_count = 0
+    try:
+        # Ensure output directory exists
+        _create_real_directory(OUTPUT_DIR)
+        
+        # Copy plots (directly to output folder)
+        if _TEMP_PLOTS.exists():
+            for f in _TEMP_PLOTS.iterdir():
+                if f.is_file():
+                    try:
+                        shutil.copy2(str(f), str(OUTPUT_DIR / f.name))
+                        copied_count += 1
+                    except Exception as e:
+                        success = False
+        
+        # Copy animations (directly to output folder)
+        if _TEMP_ANIMATIONS.exists():
+            for f in _TEMP_ANIMATIONS.iterdir():
+                if f.is_file():
+                    try:
+                        shutil.copy2(str(f), str(OUTPUT_DIR / f.name))
+                        copied_count += 1
+                    except Exception as e:
+                        success = False
+        
+        if copied_count > 0:
+            print(f"\nOutput files saved to: {OUTPUT_DIR}")
+            print(f"  ({copied_count} files copied)")
+        
+        if not success:
+            raise Exception("Some files could not be copied")
+            
+    except Exception as e:
+        print(f"\nNote: Some files could not be copied to final directory")
+        print(f"All output files are available in: {_TEMP_BASE}")
 
 
 def setup_plot_style():
@@ -64,7 +182,7 @@ def plot_reference_angles(time, angles_dict, n_links=9, save=True, show=True):
     plt.tight_layout()
     
     if save:
-        plt.savefig('Reference_Angles.png', dpi=PLOT_SETTINGS['figure_dpi'], 
+        plt.savefig(get_save_path('Reference_Angles.png'), dpi=PLOT_SETTINGS['figure_dpi'], 
                    bbox_inches='tight')
     if show:
         plt.show()
@@ -121,7 +239,7 @@ def plot_reference_vs_actual(ref_angles, T_ref, actual_angles, T_actual,
     plt.tight_layout()
     
     if save:
-        plt.savefig('Reference_vs_Actual_Joints.png', 
+        plt.savefig(get_save_path('ref_vs_actual_jts.png'), 
                    dpi=PLOT_SETTINGS['figure_dpi'], bbox_inches='tight')
     if show:
         plt.show()
@@ -256,7 +374,7 @@ def plot_cm_trajectory(px, py, time=None, save=True, show=True):
     plt.tight_layout()
     
     if save:
-        plt.savefig('Snake_CM_Trajectory.png', 
+        plt.savefig(get_save_path('Snake_CM_Trajectory.png'), 
                    dpi=PLOT_SETTINGS['figure_dpi'], bbox_inches='tight')
     if show:
         plt.show()
@@ -296,7 +414,7 @@ def plot_position_vs_time(time, px, py, save=True, show=True):
     plt.tight_layout()
     
     if save:
-        plt.savefig('Position_vs_Time.png', 
+        plt.savefig(get_save_path('Position_vs_Time.png'), 
                    dpi=PLOT_SETTINGS['figure_dpi'], bbox_inches='tight')
     if show:
         plt.show()
@@ -336,7 +454,7 @@ def plot_velocity_vs_time(time, px_d, py_d, save=True, show=True):
     plt.tight_layout()
     
     if save:
-        plt.savefig('Velocity_vs_Time.png', 
+        plt.savefig(get_save_path('Velocity_vs_Time.png'), 
                    dpi=PLOT_SETTINGS['figure_dpi'], bbox_inches='tight')
     if show:
         plt.show()
@@ -368,7 +486,7 @@ def plot_head_angle(time, theta_n, save=True, show=True):
     plt.tight_layout()
     
     if save:
-        plt.savefig('Head_Angle.png', 
+        plt.savefig(get_save_path('Head_Angle.png'), 
                    dpi=PLOT_SETTINGS['figure_dpi'], bbox_inches='tight')
     if show:
         plt.show()
@@ -461,7 +579,7 @@ def plot_average_joint_angle(time, joint_angles, ref_angles=None, T_ref=None,
     plt.tight_layout()
     
     if save:
-        plt.savefig('Average_Joint_Angle.png', 
+        plt.savefig(get_save_path('Average_Joint_Angle.png'), 
                    dpi=PLOT_SETTINGS['figure_dpi'], bbox_inches='tight')
     if show:
         plt.show()
@@ -504,7 +622,7 @@ def plot_tracking_error(time, ref_angles, actual_angles, save=True, show=True):
     plt.tight_layout()
     
     if save:
-        plt.savefig('Tracking_Error.png', 
+        plt.savefig(get_save_path('Tracking_Error.png'), 
                    dpi=PLOT_SETTINGS['figure_dpi'], bbox_inches='tight')
     if show:
         plt.show()
@@ -573,7 +691,7 @@ def create_summary_plot(time, states, ref_angles, T_ref, save=True, show=True):
     plt.tight_layout()
     
     if save:
-        plt.savefig('Simulation_Summary.png', 
+        plt.savefig(get_save_path('Simulation_Summary.png'), 
                    dpi=PLOT_SETTINGS['figure_dpi'], bbox_inches='tight')
     if show:
         plt.show()
@@ -697,7 +815,7 @@ def plot_performance_metrics(performance, save=True, show=True):
     plt.tight_layout()
     
     if save:
-        plt.savefig('Performance_Metrics.png', 
+        plt.savefig(get_save_path('Performance_Metrics.png'), 
                    dpi=PLOT_SETTINGS['figure_dpi'], bbox_inches='tight')
     if show:
         plt.show()
@@ -958,15 +1076,17 @@ def animate_snake_robot(time, states, phy_props, save=True, show=True,
         try:
             # Try to save as GIF (requires pillow)
             print("Saving animation as GIF...")
-            anim.save('snake_robot_animation.gif', writer='pillow', fps=20, dpi=100)
-            print("Animation saved as 'snake_robot_animation.gif'")
+            gif_path = get_save_path('snake_robot_animation.gif', 'animations')
+            anim.save(gif_path, writer='pillow', fps=20, dpi=100)
+            print(f"Animation saved as '{gif_path}'")
         except Exception as e:
             print(f"Could not save GIF: {e}")
             try:
                 # Try to save as MP4 (requires ffmpeg)
                 print("Trying to save as MP4...")
-                anim.save('snake_robot_animation.mp4', writer='ffmpeg', fps=20, dpi=100)
-                print("Animation saved as 'snake_robot_animation.mp4'")
+                mp4_path = get_save_path('snake_robot_animation.mp4', 'animations')
+                anim.save(mp4_path, writer='ffmpeg', fps=20, dpi=100)
+                print(f"Animation saved as '{mp4_path}'")
             except Exception as e2:
                 print(f"Could not save MP4: {e2}")
                 print("To save animations, install: pip install pillow")
@@ -1082,8 +1202,9 @@ def create_snake_frames(time, states, phy_props, n_frames=6, save=True, show=Tru
     plt.tight_layout()
     
     if save:
-        plt.savefig('Snake_Motion_Sequence.png', dpi=PLOT_SETTINGS['figure_dpi'], bbox_inches='tight')
-        print("Saved 'Snake_Motion_Sequence.png'")
+        save_path = get_save_path('Snake_Motion_Sequence.png')
+        plt.savefig(save_path, dpi=PLOT_SETTINGS['figure_dpi'], bbox_inches='tight')
+        print(f"Saved '{save_path}'")
     
     if show:
         plt.show()
